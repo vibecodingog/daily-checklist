@@ -29,7 +29,8 @@
       checklists: 'dailyChecklists',
       todos: 'todoLists',
       goals: 'goals',
-      streak: 'checklistStreak'
+      streak: 'checklistStreak',
+      accomplishments: 'accomplishments'
     };
 
     const loadData = (key, defaultValue) => {
@@ -58,6 +59,8 @@
         localStorage.removeItem(STORAGE_KEYS.checklists);
         localStorage.removeItem(STORAGE_KEYS.todos);
         localStorage.removeItem(STORAGE_KEYS.goals);
+        localStorage.removeItem(STORAGE_KEYS.accomplishments);
+        localStorage.removeItem(STORAGE_KEYS.streak);
         window.location.reload();
       };
 
@@ -66,6 +69,8 @@
           checklists: loadData(STORAGE_KEYS.checklists, []),
           todos: loadData(STORAGE_KEYS.todos, []),
           goals: loadData(STORAGE_KEYS.goals, []),
+          accomplishments: loadData(STORAGE_KEYS.accomplishments, []),
+          streak: loadData(STORAGE_KEYS.streak, 0),
           exportedAt: new Date().toISOString()
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -109,6 +114,9 @@
                 <button onClick={() => setCurrentPage('goals')} className={`px-4 py-2 rounded-lg font-medium transition-all ${currentPage === 'goals' ? 'bg-violet-500 text-slate-900' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}>
                   Goals
                 </button>
+                <button onClick={() => setCurrentPage('accomplishments')} className={`px-4 py-2 rounded-lg font-medium transition-all ${currentPage === 'accomplishments' ? 'bg-yellow-500 text-slate-900' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}>
+                  🏆 Accomplishments
+                </button>
               </div>
               <div className="flex gap-2">
                 <button onClick={exportAllData} className="px-3 py-2 bg-slate-700/50 text-slate-300 hover:bg-slate-700 rounded-lg text-sm transition-all flex items-center gap-1">
@@ -144,6 +152,7 @@
           {currentPage === 'checklists' && <DailyChecklists />}
           {currentPage === 'todo' && <TodoPage />}
           {currentPage === 'goals' && <GoalsPage />}
+          {currentPage === 'accomplishments' && <AccomplishmentsPage />}
         </div>
       );
     }
@@ -352,6 +361,11 @@
       const totalChecked = checklists.reduce((sum, list) => sum + list.items.filter(i => i.checked).length, 0);
       const totalProgress = totalItems > 0 ? (totalChecked / totalItems) * 100 : 0;
 
+      // Random emoji every 3 days based on streak
+      const streakEmojis = ['🔥', '⚡', '💪', '🚀', '⭐', '🌟', '💥', '🎯', '👑', '🏆', '💎', '🌈', '🎉', '✨', '🦾', '🧠', '❤️‍🔥', '🔱', '🏅', '🎖️'];
+      const emojiIndex = Math.floor(streak / 3) % streakEmojis.length;
+      const streakEmoji = streak === 0 ? '🔥' : streakEmojis[emojiIndex];
+
       return (
         <div className="p-4 md:p-8">
           <div className="max-w-4xl mx-auto">
@@ -359,7 +373,7 @@
               <div className="flex items-center justify-center gap-3 mb-2">
                 <h1 className="text-3xl font-bold text-white">Daily Checklists</h1>
                 <div className="flex items-center gap-1 bg-orange-500/20 px-3 py-1 rounded-full">
-                  <span className="text-xl">🔥</span>
+                  <span className="text-xl">{streakEmoji}</span>
                   <span className="text-orange-400 font-bold text-lg">{streak}</span>
                 </div>
               </div>
@@ -481,7 +495,13 @@
     // To Do Page
     function TodoPage() {
       const defaultTodos = [
-        { id: 'now', name: 'Now', color: 'rose', items: [] },
+        { id: 'now', name: 'Now', color: 'rose', items: [
+          { id: 1, text: 'upload video to youtube', checked: false },
+          { id: 2, text: 'make a media proposal for block', checked: false },
+          { id: 3, text: 'Make it so that there is a list of accomplishments, long-term and short-term accomplishments, sort of like it gets saved somewhere under an "Accomplishments" tab.', checked: false },
+          { id: 4, text: 'Make it so that every three days on the streak, there\'s a new emoji. A random one.', checked: false },
+          { id: 5, text: 'clean bathrooms', checked: false }
+        ]},
         { id: 'later', name: 'Later', color: 'cyan', items: [] }
       ];
 
@@ -857,9 +877,11 @@
       const [showSendMenu, setShowSendMenu] = useState({ goalId: null, subtaskId: null });
       const [dragGoal, setDragGoal] = useState(null);
       const [dragSubtask, setDragSubtask] = useState(null);
+      const [accomplishments, setAccomplishments] = useState(() => loadData(STORAGE_KEYS.accomplishments, []));
 
       useEffect(() => { saveData(STORAGE_KEYS.goals, goals); }, [goals]);
       useEffect(() => { saveData(STORAGE_KEYS.todos, todos); }, [todos]);
+      useEffect(() => { saveData(STORAGE_KEYS.accomplishments, accomplishments); }, [accomplishments]);
 
       const updateState = (newGoals, newTodos = todos) => {
         setHistory(prev => [...prev, { goals, todos }]);
@@ -1069,6 +1091,29 @@
             items: list.items.map(item => item.linkedGoalId === goalId && item.linkedSubtaskId === subtaskId ? { ...item, checked: !subtask.checked } : item)
           }));
         }
+        
+        // Check if goal will be complete after this toggle
+        const updatedGoal = newGoals.find(g => g.id === goalId);
+        const willBeComplete = updatedGoal.subtasks.length > 0 && updatedGoal.subtasks.every(s => s.checked);
+        
+        if (willBeComplete) {
+          // Move to accomplishments after a short delay for visual feedback
+          setTimeout(() => {
+            const completedGoal = {
+              ...updatedGoal,
+              id: Date.now(),
+              completedAt: new Date().toISOString()
+            };
+            setAccomplishments(prev => [...prev, completedGoal]);
+            setGoals(g => g.filter(goal => goal.id !== goalId));
+            // Remove linked todos
+            setTodos(t => t.map(list => ({
+              ...list,
+              items: list.items.filter(item => item.linkedGoalId !== goalId)
+            })));
+          }, 600);
+        }
+        
         updateState(newGoals, newTodos);
       };
 
@@ -1114,11 +1159,12 @@
       const longTermGoals = goals.filter(g => g.type === 'long');
       const shortTermGoals = goals.filter(g => g.type === 'short');
 
-      const GoalColumn = ({ title, type, goalsList, color }) => {
-        const gradients = {
-          violet: { header: 'from-violet-500/20 to-purple-500/20', progress: 'from-violet-500 to-purple-500', text: 'text-violet-400' },
-          teal: { header: 'from-teal-500/20 to-emerald-500/20', progress: 'from-teal-500 to-emerald-500', text: 'text-teal-400' }
-        };
+      const gradients = {
+        violet: { header: 'from-violet-500/20 to-purple-500/20', progress: 'from-violet-500 to-purple-500', text: 'text-violet-400' },
+        teal: { header: 'from-teal-500/20 to-emerald-500/20', progress: 'from-teal-500 to-emerald-500', text: 'text-teal-400' }
+      };
+
+      const renderGoalColumn = (title, type, goalsList, color) => {
         const scheme = gradients[color];
 
         return (
@@ -1253,8 +1299,8 @@
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
-              <GoalColumn title="Long-term" type="long" goalsList={longTermGoals} color="violet" />
-              <GoalColumn title="Short-term" type="short" goalsList={shortTermGoals} color="teal" />
+              {renderGoalColumn("Long-term", "long", longTermGoals, "violet")}
+              {renderGoalColumn("Short-term", "short", shortTermGoals, "teal")}
             </div>
 
             {history.length > 0 && (
@@ -1265,6 +1311,187 @@
             )}
 
             <p className="text-center text-slate-500 text-xs mt-6">Click to edit • Hover sub-tasks to send to To Do • Goals auto-complete when all sub-tasks done</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Accomplishments Page
+    function AccomplishmentsPage() {
+      const [accomplishments, setAccomplishments] = useState(() => loadData(STORAGE_KEYS.accomplishments, []));
+      const [goals, setGoals] = useState(() => loadData(STORAGE_KEYS.goals, []));
+      const [dragInfo, setDragInfo] = useState(null);
+
+      useEffect(() => { saveData(STORAGE_KEYS.accomplishments, accomplishments); }, [accomplishments]);
+      useEffect(() => { saveData(STORAGE_KEYS.goals, goals); }, [goals]);
+
+      const deleteAccomplishment = (id) => {
+        setAccomplishments(accomplishments.filter(a => a.id !== id));
+      };
+
+      const restoreToGoals = (item) => {
+        const restoredGoal = {
+          id: Date.now(),
+          type: item.type,
+          title: item.title,
+          subtasks: item.subtasks.map(s => ({ ...s, checked: false, linkedTo: null }))
+        };
+        setGoals([...goals, restoredGoal]);
+        setAccomplishments(accomplishments.filter(a => a.id !== item.id));
+      };
+
+      // Drag handlers
+      const handleDragStart = (type, index) => {
+        setDragInfo({ type, index });
+      };
+
+      const handleDragOver = (e, type, index) => {
+        e.preventDefault();
+        if (!dragInfo || dragInfo.type !== type || dragInfo.index === index) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+        if (e.clientY < midpoint) {
+          e.currentTarget.classList.add('drag-over-top');
+        } else {
+          e.currentTarget.classList.add('drag-over-bottom');
+        }
+      };
+
+      const handleDragLeave = (e) => {
+        e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+      };
+
+      const handleDrop = (e, type, dropIndex) => {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+        if (!dragInfo || dragInfo.type !== type) return;
+        
+        const dragIndex = dragInfo.index;
+        if (dragIndex === dropIndex) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        let targetIndex = e.clientY < midpoint ? dropIndex : dropIndex + 1;
+        if (dragIndex < targetIndex) targetIndex--;
+        if (dragIndex === targetIndex) return;
+
+        const itemsOfType = accomplishments.filter(a => a.type === type);
+        const otherItems = accomplishments.filter(a => a.type !== type);
+        const newItemsOfType = [...itemsOfType];
+        const [removed] = newItemsOfType.splice(dragIndex, 1);
+        newItemsOfType.splice(targetIndex, 0, removed);
+        setAccomplishments([...otherItems, ...newItemsOfType]);
+        setDragInfo(null);
+      };
+
+      const handleDragEnd = () => setDragInfo(null);
+
+      const longTerm = accomplishments.filter(a => a.type === 'long');
+      const shortTerm = accomplishments.filter(a => a.type === 'short');
+
+      // Random emoji every 3 accomplishments
+      const emojis = ['🏆', '⭐', '🎯', '💪', '🚀', '👑', '💎', '🌟', '🎉', '✨', '🔥', '⚡', '🦾', '🏅', '🎖️', '💥', '🌈', '❤️‍🔥'];
+      const getLongEmoji = () => longTerm.length === 0 ? '🎯' : emojis[Math.floor(longTerm.length / 3) % emojis.length];
+      const getShortEmoji = () => shortTerm.length === 0 ? '🎯' : emojis[Math.floor(shortTerm.length / 3) % emojis.length];
+
+      const renderAccomplishmentCard = (item, index, type) => (
+        <div 
+          key={item.id}
+          draggable="true"
+          onDragStart={() => handleDragStart(type, index)}
+          onDragOver={(e) => handleDragOver(e, type, index)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, type, index)}
+          onDragEnd={handleDragEnd}
+          className="group bg-green-500/10 border border-green-500/30 rounded-xl p-3"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-green-400">✓</span>
+                <span className="text-white font-medium">{item.title}</span>
+              </div>
+              <p className="text-slate-500 text-xs">Completed {new Date(item.completedAt).toLocaleDateString()}</p>
+              {item.subtasks && item.subtasks.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {item.subtasks.map(s => (
+                    <div key={s.id} className="text-xs text-slate-400 flex items-center gap-1">
+                      <span className="text-green-400">✓</span> {s.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all">
+              <button onClick={() => restoreToGoals(item)} className="text-slate-500 hover:text-yellow-400 transition-colors p-1" title="Restore to Goals">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              </button>
+              <button onClick={() => deleteAccomplishment(item.id)} className="text-slate-500 hover:text-red-400 transition-colors p-1" title="Delete">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="p-4 md:p-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-white mb-2">🏆 Accomplishments</h1>
+              <p className="text-slate-400">Goals you've completed • {accomplishments.length} total</p>
+            </div>
+
+            {accomplishments.length === 0 ? (
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-12 text-center">
+                <div className="text-6xl mb-4">🎯</div>
+                <h3 className="text-xl font-bold text-white mb-2">No accomplishments yet</h3>
+                <p className="text-slate-400">Complete all sub-tasks in a goal to move it here!</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden">
+                  <div className="bg-gradient-to-r from-violet-500/20 to-purple-500/20 p-4 border-b border-slate-700/50">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-bold text-white">Long-term</h2>
+                      <div className="flex items-center gap-1 bg-violet-500/20 px-2 py-1 rounded-full">
+                        <span>{getLongEmoji()}</span>
+                        <span className="text-violet-400 font-bold">{longTerm.length}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto scrollbar-thin">
+                    {longTerm.length === 0 ? (
+                      <div className="text-center text-slate-500 py-8">None yet</div>
+                    ) : (
+                      longTerm.map((item, index) => renderAccomplishmentCard(item, index, 'long'))
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden">
+                  <div className="bg-gradient-to-r from-teal-500/20 to-emerald-500/20 p-4 border-b border-slate-700/50">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-bold text-white">Short-term</h2>
+                      <div className="flex items-center gap-1 bg-teal-500/20 px-2 py-1 rounded-full">
+                        <span>{getShortEmoji()}</span>
+                        <span className="text-teal-400 font-bold">{shortTerm.length}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto scrollbar-thin">
+                    {shortTerm.length === 0 ? (
+                      <div className="text-center text-slate-500 py-8">None yet</div>
+                    ) : (
+                      shortTerm.map((item, index) => renderAccomplishmentCard(item, index, 'short'))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <p className="text-center text-slate-500 text-xs mt-6">Drag to reorder • Hover to restore goal or delete</p>
           </div>
         </div>
       );
